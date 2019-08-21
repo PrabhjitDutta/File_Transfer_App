@@ -35,7 +35,7 @@ class Client(Thread):
 			time.sleep(0.1)
 			size = ((self.s).recv(1024)).decode()
 			if not size:
-				print("\n\nPackages Received Sucessfully\n\n")
+				print("\nPackages Received Sucessfully\n")
 				break
 			
 			size = int(size)
@@ -50,10 +50,11 @@ class Client(Thread):
 				data = ((self.s).recv(self.buffer))
 				file.write(data)
 				size_recv = (os.stat(file_name)).st_size
-				if size_recv == size:
-					print("File Received")
-					file.close()
+				if size_recv == 0:
 					break
+
+			print("\nFile Received")
+			file.close()
 
 
 def ipScanner():
@@ -74,7 +75,7 @@ def ipScanner():
 	result = str(subprocess.check_output(['arp', '-a']))
 	result = result.split()
 
-	regex = re.compile(r"(19[2-9]\.[\.0-9]*)|(2[0-2][0-3]\.[\.0-9]*)")
+	regex = re.compile(r"(19[2-9]\.[\.0-9]+)|(2[0-2][0-3]\.[\.0-9]+)")
 	result = list(filter(regex.search, result))
 	return result
 
@@ -90,14 +91,31 @@ def receiveMode():
 
 	socket1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	socket1.bind(address)
+	print("\nWaiting for Sender...")
 
 	try:
 		while True:
-			socket1.listen(5)
+			socket1.listen(10)
 			s, address = socket1.accept()
-			print("Accepted Connection")
-			new_thread = Client(s, address, buffer)
-			new_thread.start()
+			
+			statement = (s.recv(512)).decode()
+			print("\n" + statement)
+
+			while True:
+				x = input("Enter y to Receive or n to Reject: ")
+
+				if x == 'y':
+					s.send(("accepted").encode())
+					new_thread = Client(s, address, buffer)
+					new_thread.start()
+					break
+				elif x == 'n':
+					s.send(("rejected").encode())
+					break
+				else:
+					print("Illegal Response Try Again")
+					continue
+
 
 	except KeyboardInterrupt:
 		socket1.close()
@@ -110,22 +128,27 @@ def sendMode():
 	while True:
 		count = 1
 
-		ip_list = ipScanner()
-		for i in ip_list:
-			print(f"{count}. {i}")
-			count+=1
+		inp = input("Enter ip or scan to Scan for devices: ")
+		if inp == 'scan':
+			ip_list = ipScanner()
+			for i in ip_list:
+				print(f"{count}. {i}")
+				count+=1
 
-		print(f"{count}. Rescan")
-		print(f"{count+1}. Custom IP")
-		z = int(input())
+			print(f"{count}. Rescan")
+			print(f"{count+1}. Custom IP")
+			z = int(input())
 
-		if z != count and z != count+1:
-			ip = ip_list[z-1]
-			break
-		elif z == count:
-			continue
+			if z != count and z != count+1:
+				ip = ip_list[z-1]
+				break
+			elif z == count:
+				continue
+			else:
+				ip = input("Give IP: ")
+				break
 		else:
-			ip = input("Give IP: ")
+			ip = inp
 			break
 
 	host = ip
@@ -136,9 +159,8 @@ def sendMode():
 
 	socket2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	socket2.connect(address)
-	print("Connected to Receiver")
 
-	file_address = input("Enter file Location: ")
+	file_address = input("\nEnter file Location: ")
 	os.chdir(file_address)
 
 	file_names = []
@@ -150,9 +172,21 @@ def sendMode():
 			break
 		file_names.append(x)
 
+	print("\nAsking permission from Receiver...")
+	socket2.send((ip + " wants to share: " + ' '.join(file_names)).encode())
+	response = (socket2.recv(32)).decode()
+
+	if response == 'accepted':
+		print("Accepted by Receiver")
+		pass
+	else:
+		print("Rejected by Receiver")
+		return -1
+
+
 	for file_name in file_names:
 		try:
-			f = open(file_name, "rb")
+			f = open(file_name, "rb+")
 		except FileNotFoundError:
 			print("No file called {f} present in the Directory".format(f=file_name))
 			continue
